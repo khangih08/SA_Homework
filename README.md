@@ -6,8 +6,6 @@ Dự án triển khai kiến trúc **Spring Boot Microservices** kết hợp **N
 
 ## 1. Kiến Trúc Hệ Thống & Security Design Patterns
 
-### 1.1. Sơ đồ kiến trúc tổng quan
-
 ```mermaid
 flowchart TD
     Client(["Client (Browser / Postman / PowerShell)"])
@@ -58,27 +56,6 @@ flowchart TD
     OS --> ODB
 ```
 
-### 1.2. Các Design Pattern bảo mật áp dụng
-
-1. **API Gateway Pattern**: 
-   - Đóng vai trò điểm vào duy nhất (Single Point of Entry) tại cổng `8080`.
-   - Toàn bộ backend service (`8081`, `8082`) và database (`5433`, `5434`) được cô lập bên trong mạng Docker nội bộ (`microservices_net`), không mở port công khai ra ngoài.
-2. **Federated Identity & JWT Offloading (`auth_request` Pattern)**:
-   - Nginx thực hiện kiểm tra xác thực tập trung trước khi chuyển tiếp: gửi subrequest nội bộ `GET /_auth_verify` sang User Service.
-   - Trích xuất identity headers (`X-User-Id`, `X-User-Role`) từ kết quả xác thực và xóa sạch mọi header giả mạo do client tự gửi lên.
-   - Endpoint `/auth/verify` được cấu hình `internal`, chặn truy cập trực tiếp từ Internet (HTTP 404).
-3. **Defense in Depth (Phòng thủ đa tầng)**:
-   - Các backend services (User Service, Order Service) không tắt bảo mật mà tiếp tục duy trì Spring Security độc lập (`JwtAuthenticationFilter`) để xác minh lại chữ ký token, đảm bảo an toàn ngay cả khi mạng nội bộ bị xâm nhập.
-4. **Rate Limiting Pattern (Leaky Bucket)**:
-   - Nginx cấu hình `limit_req_zone` giới hạn nghiêm ngặt **10 request/giây** theo IP client, trả về mã HTTP 429 khi vượt ngưỡng để chống tấn công Brute-force và DoS.
-5. **API Aggregation Pattern (Dashboard API)**:
-   - Endpoint `GET /dashboard/me` do User Service đóng vai trò Aggregator, gọi nội bộ sang Order Service qua `RestClient` (mang theo Bearer Token) để tổng hợp thông tin cá nhân và danh sách đơn hàng trong một lần gọi duy nhất.
-6. **Valet Key Pattern (MinIO Pre-signed URL)**:
-   - Client xin cấp pre-signed URL (`POST /users/me/avatar/presign`) có thời hạn sống ngắn (300 giây).
-   - Client trực tiếp upload file ảnh nhị phân lên MinIO (`HTTP PUT`) mà không truyền qua backend, giúp tiết kiệm băng thông và tài nguyên CPU của microservices.
-
----
-
 ## 2. Yêu Cầu Chức Năng
 
 | Thành phần | Cổng Host | Endpoint chính | Quyền truy cập & Bảo mật | Chức năng nghiệp vụ |
@@ -113,19 +90,6 @@ docker compose logs -f api-gateway
 # 5. Dừng hệ thống (giữ nguyên dữ liệu volume)
 docker compose down
 ```
-
-> **Lưu ý vận hành**: Không sử dụng `docker compose down -v` để tránh xóa dữ liệu trong PostgreSQL và MinIO.
-
-### 3.2. Quy tắc bảo mật quan trọng (Security Policy)
-
-> [!CAUTION]
-> **Tuyệt đối KHÔNG commit hoặc đưa file `.env`, `.env.example` hoặc bất kỳ file nào chứa mật khẩu, token, khóa bí mật lên GitHub.**
->
-> Toàn bộ các định dạng sau đã được cấu hình loại trừ vĩnh viễn trong [.gitignore](file:///.gitignore):
-> - `.env`, `.env.*`, `.env.example`, `*.env`
-> - `*.pem`, `*.key`, `*password*`, `secrets/`
->
-> Khi triển khai trên môi trường thật, hãy cấu hình các thông số qua **Biến môi trường hệ thống (Environment Variables)** của máy chủ hoặc Secret Manager (Docker Secrets, Kubernetes Secrets), không lưu vết mật khẩu dưới dạng văn bản thuần trong kho mã nguồn.
 
 ---
 
@@ -192,20 +156,3 @@ $$\text{Overhead (\%)} = \left(\frac{\text{P50 Gateway} - \text{P50 Direct}}{\te
 | **Orders** | 320.12 ms | 318.56 ms | -1.56 ms (-0.49%) | **31.42 ms** | **28.54 ms** | **-2.88 ms (-9.17%)** |
 | **Dashboard** | 316.05 ms | 327.78 ms | +11.73 ms (+3.71%) | **31.71 ms** | **34.98 ms** | **+3.27 ms (+10.31%)** |
 
-#### Phân tích kỹ thuật:
-- **Môi trường Kaggle (Qua Internet & Cloudflare Tunnel)**:
-  - Độ trễ mạng RTT xuyên lục địa chiếm hơn 300 ms (> 95% tổng thời gian).
-  - Biến động mạng tự nhiên (jitter) che mờ chi phí xử lý nội bộ của Gateway, dẫn đến sự khác biệt giữa hai phương thức là không đáng kể.
-- **Môi trường Localhost (Không qua Internet)**:
-  - Độ trễ mạng loopback < 0.2 ms, phản ánh chính xác 100% chi phí xử lý CPU và các chặng HTTP nội bộ: Nginx nhận request $\rightarrow$ kiểm tra Leaky Bucket $\rightarrow$ gọi subrequest `/_auth_verify` xác minh JWT $\rightarrow$ forward tới backend $\rightarrow$ backend xác thực Defense in Depth và truy vấn database.
-  - Dashboard có overhead P50 lớn nhất (+3.27 ms) do tích hợp cả xác thực Gateway lẫn Aggregation liên service.
-
----
-
-### 4.4. Đánh giá kiến trúc & Kết luận
-
-1. **Sự đánh đổi hiệu năng**: Tầng API Gateway chỉ tạo thêm một khoản trễ rất nhỏ (khoảng 1.4 – 3.3 ms trên localhost) do chi phí proxy và subrequest xác thực.
-2. **Lợi ích an ninh vượt trội**:
-   - **Tập trung hóa an ninh**: Ngăn chặn tấn công DoS, Brute-force ngay tại biên mạng bằng Rate Limiting 10r/s.
-   - **Bảo vệ topology mạng**: Ẩn giấu hoàn toàn các microservice nội bộ khỏi Internet bên ngoài.
-   - **Phân tách trách nhiệm**: Gateway đảm nhận xác thực và lọc request giả mạo, trong khi backend tập trung hoàn toàn vào logic nghiệp vụ và giữ vững nguyên tắc Defense in Depth.
