@@ -1,0 +1,4 @@
+﻿"Endpoint","DirectMean","GatewayMean","DirectP50","GatewayP50","DirectP95","GatewayP95","OverheadMs","OverheadPercent","Valid"
+"Users","31.24","31.62","26.54","27.94","53.39","53.22","1.4","5.28%","True"
+"Orders","33.34","34.55","31.42","28.54","53.47","68.23","-2.88","-9.17%","True"
+"Dashboard","36.08","39.35","31.71","34.98","51.81","68.95","3.27","10.31%","True"

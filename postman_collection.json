@@ -1,0 +1,428 @@
+{
+  "info": {
+    "_postman_id": "c8a417e2-4db2-4d40-8b1b-944d18fa7761",
+    "name": "Microservices App (API Gateway, User, Order, MinIO)",
+    "description": "Postman Collection for Microservices System with Nginx API Gateway (8080), User Service (8081), Order Service (8082), and MinIO (9000)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "gateway_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "user_service_url",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "order_service_url",
+      "value": "http://localhost:8082",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "upload_url",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "object_key",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. API Gateway (Port 8080)",
+      "item": [
+        {
+          "name": "Register via Gateway",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyen Van Gateway\",\n  \"email\": \"gateway_user@example.com\",\n  \"password\": \"Password@123\"\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/auth/register",
+              "host": ["{{gateway_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Register user account through API Gateway"
+          }
+        },
+        {
+          "name": "Login via Gateway",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.accessToken) {",
+                  "    pm.collectionVariables.set('access_token', jsonData.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"gateway_user@example.com\",\n  \"password\": \"Password@123\"\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/auth/login",
+              "host": ["{{gateway_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login through Gateway and automatically set access_token"
+          }
+        },
+        {
+          "name": "GET /users/me via Gateway",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/users/me",
+              "host": ["{{gateway_url}}"],
+              "path": ["users", "me"]
+            },
+            "description": "Fetch current user profile via Gateway with JWT Offloading verification"
+          }
+        },
+        {
+          "name": "PUT /users/me via Gateway",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyen Van Gateway Updated\",\n  \"avatarUrl\": \"http://localhost:9000/user-avatars/sample.png\"\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/users/me",
+              "host": ["{{gateway_url}}"],
+              "path": ["users", "me"]
+            },
+            "description": "Update user profile via Gateway"
+          }
+        },
+        {
+          "name": "POST /users/me/avatar/presign (MinIO Presigned URL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.uploadUrl) {",
+                  "    pm.collectionVariables.set('upload_url', jsonData.uploadUrl);",
+                  "}",
+                  "if (jsonData.objectKey) {",
+                  "    pm.collectionVariables.set('object_key', jsonData.objectKey);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileName\": \"my_avatar.png\",\n  \"contentType\": \"image/png\"\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/users/me/avatar/presign",
+              "host": ["{{gateway_url}}"],
+              "path": ["users", "me", "avatar", "presign"]
+            },
+            "description": "Generate MinIO Pre-signed PUT URL valid for 300 seconds"
+          }
+        },
+        {
+          "name": "Upload Avatar Direct to MinIO (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "image/png"
+              }
+            ],
+            "body": {
+              "mode": "file",
+              "file": {
+                "src": ""
+              }
+            },
+            "url": {
+              "raw": "{{upload_url}}",
+              "host": ["{{upload_url}}"]
+            },
+            "description": "Upload image binary directly to MinIO using the presigned URL"
+          }
+        },
+        {
+          "name": "POST /users/me/avatar/confirm via Gateway",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objectKey\": \"{{object_key}}\"\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/users/me/avatar/confirm",
+              "host": ["{{gateway_url}}"],
+              "path": ["users", "me", "avatar", "confirm"]
+            },
+            "description": "Confirm avatar file exists on MinIO and update avatar URL in DB"
+          }
+        },
+        {
+          "name": "POST /orders via Gateway",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"MacBook Pro M3\",\n  \"quantity\": 2,\n  \"unitPrice\": 1999.00\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/orders",
+              "host": ["{{gateway_url}}"],
+              "path": ["orders"]
+            },
+            "description": "Create a new order routed to Order Service through Gateway"
+          }
+        },
+        {
+          "name": "GET /orders via Gateway",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/orders",
+              "host": ["{{gateway_url}}"],
+              "path": ["orders"]
+            },
+            "description": "List orders belonging to authenticated user via Gateway"
+          }
+        },
+        {
+          "name": "GET /dashboard/me via Gateway (Aggregation)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/dashboard/me",
+              "host": ["{{gateway_url}}"],
+              "path": ["dashboard", "me"]
+            },
+            "description": "Aggregates User Profile and Orders list into single dashboard response"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Direct User Service (Port 8081)",
+      "item": [
+        {
+          "name": "Register User Direct",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyen Van Direct\",\n  \"email\": \"direct_user@example.com\",\n  \"password\": \"Password@123\"\n}"
+            },
+            "url": {
+              "raw": "{{user_service_url}}/auth/register",
+              "host": ["{{user_service_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login Direct",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.accessToken) {",
+                  "    pm.collectionVariables.set('access_token', jsonData.accessToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"direct_user@example.com\",\n  \"password\": \"Password@123\"\n}"
+            },
+            "url": {
+              "raw": "{{user_service_url}}/auth/login",
+              "host": ["{{user_service_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Profile Direct",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{user_service_url}}/users/me",
+              "host": ["{{user_service_url}}"],
+              "path": ["users", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Direct Order Service (Port 8082)",
+      "item": [
+        {
+          "name": "Create Order Direct",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"Dell XPS 15\",\n  \"quantity\": 1,\n  \"unitPrice\": 2199.00\n}"
+            },
+            "url": {
+              "raw": "{{order_service_url}}/orders",
+              "host": ["{{order_service_url}}"],
+              "path": ["orders"]
+            }
+          }
+        },
+        {
+          "name": "Get Orders Direct",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{order_service_url}}/orders",
+              "host": ["{{order_service_url}}"],
+              "path": ["orders"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
