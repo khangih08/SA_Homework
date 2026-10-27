@@ -8,20 +8,43 @@ Dự án triển khai kiến trúc **Spring Boot Microservices** kết hợp **N
 
 ```mermaid
 flowchart LR
-    Client(["Client"]) --> GW["Nginx API Gateway (JWT Auth & Rate Limit 10r/s)"]
+    Client(["Client (Web / Mobile)"])
 
-    subgraph Docker ["Internal Network"]
-        GW -->|"/users, /dashboard"| US["User Service"]
-        GW -->|"/orders"| OS["Order Service"]
-        US -->|"Gộp đơn hàng (/dashboard)"| OS
-
-        US --> UDB[("PostgreSQL (User)")]
-        OS --> ODB[("PostgreSQL (Order)")]
-        MinIO[("MinIO Storage")]
+    subgraph Public_Zone ["Vùng Public (Mở Port ra ngoài)"]
+        GW["Nginx API Gateway (:8080)<br/>• Rate Limit: 10r/s<br/>• Reverse Proxy & Routing"]
+        MinIO["MinIO Storage (:9000)<br/>• S3 Direct Upload"]
     end
 
-    US -.->|"Pre-signed URL"| Client
-    Client -.->|"Direct Upload (Avatar)"| MinIO
+    subgraph Internal_Network ["Internal Network (Docker Bridge: microservices_net)"]
+        direction TB
+
+        subgraph Backend_Services ["Microservices (Spring Boot)"]
+            US["User Service (:8081)<br/>• Quản lý User & Auth Server<br/>• Aggregation Service (/dashboard)<br/>• Valet Key Generator"]
+            OS["Order Service (:8082)<br/>• Quản lý Orders<br/>• Defense-in-Depth JWT Filter"]
+        end
+
+        subgraph Databases ["Database per Service (PostgreSQL 16)"]
+            UDB[("PostgreSQL (User DB)<br/>:5432 (users_db)")]
+            ODB[("PostgreSQL (Order DB)<br/>:5432 (orders_db)")]
+        end
+    end
+
+    %% Luồng từ Client
+    Client -->|"Gọi API (/auth, /users, /orders, /dashboard)"| GW
+    Client -.->|"Direct Upload Avatar (PUT Pre-signed URL)"| MinIO
+
+    %% Luồng Gateway Offloading & Routing
+    GW <-->|"1. Subrequest verify JWT (/_auth_verify)"| US
+    GW -->|"2. Forward /auth, /users, /dashboard"| US
+    GW -->|"2. Forward /orders (+ Header X-User-Id, Role)"| OS
+
+    %% Luồng tương tác giữa các service
+    US -->|"Gộp dữ liệu đơn hàng (/dashboard/me)"| OS
+    US <-->|"Ký Pre-signed URL & Verify Avatar (statObject)"| MinIO
+
+    %% Luồng Database
+    US -->|"JDBC"| UDB
+    OS -->|"JDBC"| ODB
 ```
 ## 2. Yêu Cầu Chức Năng
 
