@@ -6,8 +6,9 @@ Dự án triển khai kiến trúc **Spring Boot Microservices** kết hợp **N
 
 ## 1. Kiến Trúc Hệ Thống & Security Design Patterns
 
+```mermaid
 flowchart LR
-    Client(["Client"]) --> GW["<b>Nginx API Gateway</b><br/>(JWT Auth & Rate Limit 10r/s)"]
+    Client(["Client"]) --> GW["Nginx API Gateway (JWT Auth & Rate Limit 10r/s)"]
 
     subgraph Docker ["Internal Network"]
         GW -->|"/users, /dashboard"| US["User Service"]
@@ -21,7 +22,7 @@ flowchart LR
 
     US -.->|"Pre-signed URL"| Client
     Client -.->|"Direct Upload (Avatar)"| MinIO
-
+```
 ## 2. Yêu Cầu Chức Năng
 
 | Yêu cầu | Thực hiện |
