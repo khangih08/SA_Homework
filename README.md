@@ -1,4 +1,4 @@
-﻿# Bài tập: Thiết kế cho bảo mật bằng các design pattern
+# Bài tập: Thiết kế cho bảo mật bằng các design pattern
 
 Dự án triển khai kiến trúc **Spring Boot Microservices** kết hợp **Nginx API Gateway**, **PostgreSQL** và **MinIO Object Storage**, áp dụng toàn diện các mẫu thiết kế bảo mật (Security Design Patterns) theo nguyên tắc **Defense in Depth**.
 
@@ -56,17 +56,15 @@ flowchart TD
     OS --> ODB
 ```
 
-## 2. Yêu Cầu Chức Năng
+## 2. Yêu Cầu
 
-| Thành phần | Cổng Host | Endpoint chính | Quyền truy cập & Bảo mật | Chức năng nghiệp vụ |
-|---|---|---|---|---|
-| **API Gateway** | `8080` | Mọi route `/auth/**`, `/users/**`, `/orders/**`, `/dashboard/**` | Rate limit 10r/s, JWT Offloading | Điểm tiếp nhận request duy nhất, điều phối routing, xác thực trước và lọc header giả mạo. |
-| **User Service** | `8081` | `POST /auth/register`<br>`POST /auth/login`<br>`GET /auth/verify` | Công khai (Public)<br>Công khai (Public)<br>Internal subrequest only | Đăng ký tài khoản mới.<br>Đăng nhập, cấp phát JWT HS256 (TTL 3600s).<br>Endpoint xác thực token cho Nginx Gateway. |
-| | | `GET /users/me`<br>`GET /users/{id}`<br>`POST /users/me/avatar/presign`<br>`POST /users/me/avatar/confirm` | Yêu cầu JWT Bearer | Xem hồ sơ cá nhân.<br>Xem chi tiết người dùng.<br>Sinh pre-signed PUT URL upload avatar.<br>Xác nhận và lưu đường dẫn avatar vào database. |
-| | | `GET /dashboard/me` | Yêu cầu JWT Bearer | Tổng hợp dữ liệu người dùng và danh sách đơn hàng (API Aggregation). |
-| **Order Service** | `8082` | `POST /orders`<br>`GET /orders`<br>`GET /orders/{id}`<br>`GET /orders/user/{userId}` | Yêu cầu JWT Bearer | Tạo đơn đặt hàng mới.<br>Lấy danh sách đơn hàng của người dùng hiện tại.<br>Lấy chi tiết đơn hàng.<br>API nội bộ phục vụ User Service tổng hợp dữ liệu. |
-| **MinIO Storage** | `9000` / `9001` | S3 API (`9000`), Web Console (`9001`) | Private Bucket (`user-avatars`) | Lưu trữ file ảnh đại diện bảo mật thông qua Pre-signed URL. |
-| **PostgreSQL** | `5433` / `5434` | `users_db` (5433), `orders_db` (5434) | Mạng nội bộ Docker | Lưu trữ dữ liệu tài khoản và dữ liệu đơn hàng độc lập theo từng service. |
+| Yêu cầu | Thực hiện |
+|---|---|
+| Routing | Gateway chuyển `/users` sang User service và `/orders` sang Order service |
+| Offloading | Gateway kiểm tra JWT HS256 và giới hạn 10 request/giây theo IP |
+| Aggregation | `/dashboard` gọi User và Order song song, timeout 1,5 giây, có thể trả kết quả một phần với HTTP 206 |
+| Valet Key | User service tạo pre-signed `PUT` URL đến MinIO, đúng một object và hết hạn sau 300 giây |
+| Đo độ trễ | `scripts/benchmark.ps1` so sánh gọi thẳng và gọi qua gateway |
 
 ---
 
@@ -110,7 +108,7 @@ Dự án đi kèm bộ kịch bản tự động hóa bằng PowerShell trong th
    ```powershell
    powershell -ExecutionPolicy Bypass -File tests\rate-limit-test\test-rate-limit.ps1 -TotalRequests 35
    ```
-   - **Kết quả**: Gửi dồn dập 35 requests liên tục $\rightarrow$ **10 requests** đầu tiên được xử lý thành công, **25 requests** tiếp theo bị chặn ngay lập tức với mã **HTTP 429 Too Many Requests**.
+   - **Kết quả**: Gửi 35 requests liên tục $\rightarrow$ **10 requests** đầu tiên được xử lý thành công, **25 requests** tiếp theo bị chặn ngay lập tức với mã **HTTP 429 Too Many Requests**.
 
 3. **Kiểm thử chịu lỗi khi Order Service gặp sự cố (Resilience)**:
    ```powershell
@@ -121,8 +119,6 @@ Dự án đi kèm bộ kịch bản tự động hóa bằng PowerShell trong th
 ---
 
 ### 4.2. Kết quả đo lường hiệu năng: Direct Service vs Nginx API Gateway trên Localhost
-
-Thực hiện đo lường trực tiếp trên máy host Windows 10 bằng script [scripts/benchmark-local.ps1](file:///scripts/benchmark-local.ps1) với **50 vòng đo tuần tự xen kẽ (300 requests chính thức)**, sử dụng cùng JWT hợp lệ và delay 150 ms giữa các request để kiểm soát nhịp rate limit:
 
 #### Bảng số liệu đo lường thực tế
 
@@ -145,14 +141,4 @@ $$\text{Overhead (\%)} = \left(\frac{\text{P50 Gateway} - \text{P50 Direct}}{\te
 | **Users** | 26.54 ms | 27.94 ms | **+1.40 ms** | **+5.28%** | 31.24 ms | 31.62 ms | 53.39 ms | 53.22 ms | Hợp lệ (100% 200 OK) |
 | **Orders** | 31.42 ms | 28.54 ms | **-2.88 ms** | **-9.17%** | 33.34 ms | 34.55 ms | 53.47 ms | 68.23 ms | Hợp lệ (100% 200 OK) |
 | **Dashboard** | 31.71 ms | 34.98 ms | **+3.27 ms** | **+10.31%** | 36.08 ms | 39.35 ms | 51.81 ms | 68.95 ms | Hợp lệ (100% 200 OK) |
-
----
-
-### 4.3. So sánh với kết quả đo Kaggle Cloud trước đây
-
-| API Endpoint | Kaggle Direct P50 | Kaggle Gateway P50 | Kaggle Overhead | Localhost Direct P50 | Localhost Gateway P50 | Localhost Overhead |
-|---|---:|---:|---:|---:|---:|---:|
-| **Users** | 303.60 ms | 317.25 ms | +13.65 ms (+4.50%) | **26.54 ms** | **27.94 ms** | **+1.40 ms (+5.28%)** |
-| **Orders** | 320.12 ms | 318.56 ms | -1.56 ms (-0.49%) | **31.42 ms** | **28.54 ms** | **-2.88 ms (-9.17%)** |
-| **Dashboard** | 316.05 ms | 327.78 ms | +11.73 ms (+3.71%) | **31.71 ms** | **34.98 ms** | **+3.27 ms (+10.31%)** |
 
